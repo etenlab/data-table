@@ -1,7 +1,5 @@
 import React from 'react';
 import type { ApolloClient } from 'apollo-client';
-import type { DocumentNode } from 'graphql';
-
 import { requestDataLoader } from './requestDataLoader';
 import { useEffect, useMemo, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
@@ -25,23 +23,14 @@ interface LoadState {
 
 const TableLoader = (props: {
   identifier?: string;
-  apolloClient: ApolloClient<any>;
   title: string;
   columns: Field[];
-  formatResponse: (response: any) => {
+  doQuery: (params: { page: number; search: string }) => Promise<{
     totalCount: number | null;
     rows: Object[];
-  };
-  queryConstructor: (params: { page: number; search: string }) => DocumentNode;
+  }>;
 }) => {
-  const {
-    apolloClient,
-    formatResponse: transformResult,
-    columns,
-    identifier,
-    queryConstructor,
-    title,
-  } = props;
+  const { columns, identifier, title, doQuery } = props;
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
 
@@ -51,10 +40,6 @@ const TableLoader = (props: {
     tableData: null,
   });
 
-  const query = useMemo(() => {
-    return queryConstructor({ page, search: search });
-  }, [page, search, queryConstructor]);
-
   const loadIdentifier = identifier || title;
 
   const { load } = useMemo(
@@ -62,11 +47,9 @@ const TableLoader = (props: {
       requestDataLoader({
         identifier: loadIdentifier,
         doRequest: () => {
-          return apolloClient.query({
-            query,
-          });
+          return doQuery({ page, search });
         },
-        formatResponse: (response) => transformResult(response),
+        formatResponse: (response) => response,
         initialValue: null,
         onStateChange(output) {
           console.log('output', output);
@@ -78,7 +61,7 @@ const TableLoader = (props: {
           });
         },
       }),
-    [loadIdentifier, apolloClient, query, transformResult]
+    [loadIdentifier, doQuery, page, search]
   );
 
   useEffect(() => {
@@ -118,4 +101,4 @@ const TableView = (props: { rows: Object[]; columns: Field[] }) => {
   );
 };
 
-export default TableLoader;
+export { TableLoader };
