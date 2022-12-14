@@ -9,14 +9,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/etenlab/eil-data-table.git"
+    "url": "git+https://github.com/etenlab/data-table.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/etenlab/eil-data-table/issues"
+    "url": "https://github.com/etenlab/data-table/issues"
   },
-  "homepage": "https://github.com/etenlab/eil-data-table#readme",
+  "homepage": "https://github.com/etenlab/data-table#readme",
   "dependencies": {
     "@mui/icons-material": "^5.11.0",
     "@mui/material": "^5.11.0",
