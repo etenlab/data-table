@@ -6,6 +6,9 @@ import { GridOptions } from 'ag-grid-community';
 import 'ag-grid-community/styles//ag-grid.css';
 import 'ag-grid-community/styles//ag-theme-alpine.css';
 
+import { Box, IconButton, InputAdornment, TextField } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+
 interface Field {
   title: string;
   field: string;
@@ -118,6 +121,15 @@ const TableLoader = (props: DataLoaderProps) => {
     [doQuery, state.nextBucketPageNumber, backendPageSize, search]
   );
 
+  const applySearch = () => {
+    setState({
+      error: null,
+      loading: false,
+      tableData: null,
+      nextBucketPageNumber: 0,
+    });
+  };
+
   useEffect(() => {
     const backendHasMoreRows =
       (state.tableData?.totalCount || 0) > (state.tableData?.rows?.length || 0);
@@ -165,6 +177,35 @@ const TableLoader = (props: DataLoaderProps) => {
     <div style={{ height: '100%' }}>
       {state.loading && <div>Loading...</div>}
       {state.error && <div>{state.error.message}</div>}
+      <Box mb={2} display="flex" flexDirection={'row-reverse'}>
+        <TextField
+          id="outlined-basic"
+          label="Search"
+          variant="outlined"
+          onChange={(e) => {
+            setSearch(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              applySearch();
+            }
+          }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  color="primary"
+                  aria-label="apply search"
+                  component="label"
+                  onClick={applySearch}
+                >
+                  <SearchIcon />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
       {state.tableData && (
         <div id="1" style={{ height: '100%' }}>
           <div
@@ -173,7 +214,6 @@ const TableLoader = (props: DataLoaderProps) => {
           >
             <div style={style}>
               <AgGridReact
-                rowSelection="multiple"
                 rowData={rowsWithPlaceholders}
                 columnDefs={columnDefs}
                 pagination={true}
