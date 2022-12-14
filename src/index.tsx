@@ -1,7 +1,6 @@
 import React from 'react';
-import type { ApolloClient } from 'apollo-client';
 import { requestDataLoader } from './requestDataLoader';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { GridOptions } from 'ag-grid-community';
 import 'ag-grid-community/styles//ag-grid.css';
@@ -22,17 +21,26 @@ interface LoadState {
 }
 
 const TableLoader = (props: {
-  identifier?: string;
-  title: string;
+  identifier: string;
   columns: Field[];
-  doQuery: (params: { page: number; search: string }) => Promise<{
+  doQuery: (params: {
+    pageSize: number;
+    pageNumber: number;
+    search: string;
+  }) => Promise<{
     totalCount: number | null;
     rows: Object[];
   }>;
 }) => {
-  const { columns, identifier, title, doQuery } = props;
-  const [page, setPage] = useState(0);
+  const { columns, identifier, doQuery } = props;
+  const [pageNumber, setPageNumber] = useState(0);
   const [search, setSearch] = useState('');
+  const pageSize = 15;
+
+  const columnDefs: GridOptions['columnDefs'] = columns.map((c) => ({
+    headerName: c.title,
+    field: c.field,
+  }));
 
   const [state, setState] = useState<LoadState>({
     error: null,
@@ -40,14 +48,14 @@ const TableLoader = (props: {
     tableData: null,
   });
 
-  const loadIdentifier = identifier || title;
+  const loadIdentifier = identifier;
 
   const { load } = useMemo(
     () =>
       requestDataLoader({
         identifier: loadIdentifier,
         doRequest: () => {
-          return doQuery({ page, search });
+          return doQuery({ pageNumber, pageSize, search });
         },
         formatResponse: (response) => response,
         initialValue: null,
@@ -59,7 +67,7 @@ const TableLoader = (props: {
           });
         },
       }),
-    [loadIdentifier, doQuery, page, search]
+    [loadIdentifier, doQuery, pageNumber, search]
   );
 
   useEffect(() => {
@@ -68,33 +76,44 @@ const TableLoader = (props: {
     }
   }, [state.loading, state.error, load]);
 
-  return (
-    <div>
-      <div>
-        {state.loading && <div>Loading...</div>}
-        {state.error && <div>{state.error.message}</div>}
-        {state.tableData && (
-          <TableView columns={columns} rows={state.tableData.rows} />
-        )}
-      </div>
-    </div>
-  );
-};
+  const [style, setStyle] = useState({
+    height: '100%',
+    width: '100%',
+  });
 
-const TableView = (props: { rows: Object[]; columns: Field[] }) => {
-  const columnDefs: GridOptions['columnDefs'] = props.columns.map((c) => ({
-    headerName: c.title,
-    field: c.field,
-  }));
+  const setWidthAndHeight = (width: string, height: string) => {
+    setStyle({
+      width,
+      height,
+    });
+  };
 
-  const rowData = props.rows;
+  useLayoutEffect(() => {
+    setWidthAndHeight('100%', '100%');
+  }, []);
 
   return (
-    <div
-      className="ag-theme-alpine"
-      style={{ width: '100%', height: '1000px' }}
-    >
-      <AgGridReact rowData={rowData} columnDefs={columnDefs} />
+    <div style={{ height: '100%' }}>
+      {state.loading && <div>Loading...</div>}
+      {state.error && <div>{state.error.message}</div>}
+      {state.tableData && (
+        <div id="1" style={{ height: '100%' }}>
+          <div
+            className="ag-theme-alpine"
+            style={{ height: 'calc(100% - 25px)' }}
+          >
+            <div style={style}>
+              <AgGridReact
+                rowSelection="multiple"
+                rowData={state.tableData.rows}
+                columnDefs={columnDefs}
+                pagination={true}
+                paginationPageSize={15}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
