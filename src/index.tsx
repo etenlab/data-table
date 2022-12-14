@@ -58,6 +58,18 @@ const TableLoader = (props: DataLoaderProps) => {
     field: c.field,
   }));
 
+  const [style, setStyle] = useState({
+    height: '100%',
+    width: '100%',
+  });
+
+  // useLayoutEffect(() => {
+  //   setStyle({
+  //     width: '100%',
+  //     height: '100%',
+  //   });
+  // }, []);
+
   const [state, setState] = useState<LoadState>({
     error: null,
     loading: false,
@@ -105,22 +117,6 @@ const TableLoader = (props: DataLoaderProps) => {
       }),
     [doQuery, state.nextBucketPageNumber, backendPageSize, search]
   );
-
-  const [style, setStyle] = useState({
-    height: '100%',
-    width: '100%',
-  });
-
-  const setWidthAndHeight = (width: string, height: string) => {
-    setStyle({
-      width,
-      height,
-    });
-  };
-
-  useLayoutEffect(() => {
-    setWidthAndHeight('100%', '100%');
-  }, []);
 
   useEffect(() => {
     const backendHasMoreRows =
