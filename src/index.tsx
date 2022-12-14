@@ -1,6 +1,6 @@
 import React from 'react';
 import { requestDataLoader } from './requestDataLoader';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { GridOptions } from 'ag-grid-community';
 import 'ag-grid-community/styles//ag-grid.css';
@@ -21,8 +21,9 @@ interface LoadState {
   nextBucketPageNumber: number;
 }
 
-const TableLoader = (props: {
-  identifier: string;
+const DEFAULT_BACKEND_PAGE_SIZE = 100;
+
+export interface DataLoaderProps {
   columns: Field[];
   doQuery: (params: {
     pageSize: number;
@@ -32,12 +33,23 @@ const TableLoader = (props: {
     totalCount: number | null;
     rows: Object[];
   }>;
-}) => {
-  const { columns, identifier, doQuery } = props;
-  // const [pageNumber, setPageNumber] = useState(0);
+  /**
+   * Start loading all rows immediately
+   */
+  eager?: boolean;
+  /**
+   * Page size used in backend queries
+   */
+  loadPageSize?: number;
+}
+
+const TableLoader = (props: DataLoaderProps) => {
+  const { columns, doQuery, eager, loadPageSize } = props;
   const [search, setSearch] = useState('');
   const viewPageSize = 15;
-  const backendPageSize = 40;
+  const backendPageSize = loadPageSize || DEFAULT_BACKEND_PAGE_SIZE;
+
+  const loading = useRef(false);
 
   const [viewPageNumber, setViewPageNumber] = useState(0);
 
@@ -53,13 +65,12 @@ const TableLoader = (props: {
     nextBucketPageNumber: 0,
   });
 
-  const loadIdentifier = identifier;
-
   const { load } = useMemo(
     () =>
       requestDataLoader({
-        identifier: loadIdentifier,
         doRequest: () => {
+          loading.current = true;
+
           return doQuery({
             pageNumber: state.nextBucketPageNumber,
             pageSize: backendPageSize,
@@ -69,6 +80,8 @@ const TableLoader = (props: {
         formatResponse: (response) => response,
         initialValue: null,
         onStateChange(output) {
+          loading.current = false;
+
           if (!output.data) {
             return;
           }
@@ -76,10 +89,13 @@ const TableLoader = (props: {
           setState((state) => ({
             error: output.error,
             loading: output.loading,
-            tableData: {
-              rows: [...(state.tableData?.rows || []), ...output.data!.rows],
+            tableData: (output.data || state.tableData) && {
+              rows: [
+                ...(state.tableData?.rows || []),
+                ...(output.data?.rows || []),
+              ],
               totalCount:
-                state.tableData?.totalCount || output.data!.totalCount,
+                state.tableData?.totalCount || output.data?.totalCount || null,
             },
             nextBucketPageNumber: state.nextBucketPageNumber + 1,
           }));
@@ -87,13 +103,8 @@ const TableLoader = (props: {
           return;
         },
       }),
-    [loadIdentifier, doQuery, state.nextBucketPageNumber, search]
+    [doQuery, state.nextBucketPageNumber, backendPageSize, search]
   );
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [style, setStyle] = useState({
     height: '100%',
@@ -119,22 +130,19 @@ const TableLoader = (props: {
       (viewPageNumber + 1) * viewPageSize >=
       (state.tableData?.rows?.length || 0);
 
-    console.log(
-      'endReached',
-      endReached,
-      'backendHasMoreRows',
-      backendHasMoreRows,
-      'state.loading',
-      state.loading,
-      'viewPageNumber',
-      viewPageNumber,
-      'state.tableData?.rows?.length',
-      state.tableData?.rows?.length,
-      'state.tableData?.totalCount',
-      state.tableData?.totalCount
-    );
+    const loadNext = (endReached || eager) && backendHasMoreRows;
 
-    if (endReached && backendHasMoreRows && !state.loading && !state.error) {
+    if (
+      !state.tableData &&
+      !state.loading &&
+      !state.error &&
+      !loading.current
+    ) {
+      load();
+      return;
+    }
+
+    if (loadNext && !state.loading && !state.error && !loading.current) {
       load();
     }
   }, [
@@ -144,6 +152,8 @@ const TableLoader = (props: {
     state.tableData?.totalCount,
     load,
     state.error,
+    eager,
+    state.tableData,
   ]);
 
   const rowsWithPlaceholders = useMemo(() => {
