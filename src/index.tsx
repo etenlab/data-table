@@ -52,8 +52,6 @@ const TableLoader = (props: {
         formatResponse: (response) => response,
         initialValue: null,
         onStateChange(output) {
-          console.log('output', output);
-
           setState({
             error: output.error,
             loading: output.loading,
