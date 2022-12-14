@@ -1,5 +1,5 @@
 {
-  "name": "@eten-lab/eil-data-table",
+  "name": "@eten-lab/data-table",
   "version": "0.2.1",
   "description": "",
   "main": "dist/index.js",
