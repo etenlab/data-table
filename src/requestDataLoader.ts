@@ -9,7 +9,7 @@ const requestDataLoader = <
   onStateChange: (output: {
     data: ResultType;
     loading: boolean;
-    error: Error | null;
+    error: string | null;
   }) => void;
 }) => {
   let lastState = {

@@ -6,7 +6,15 @@ import { GridOptions } from 'ag-grid-community';
 import 'ag-grid-community/styles//ag-grid.css';
 import 'ag-grid-community/styles//ag-theme-alpine.css';
 
-import { Box, IconButton, InputAdornment, TextField } from '@mui/material';
+import {
+  Alert,
+  Box,
+  CircularProgress,
+  IconButton,
+  InputAdornment,
+  LinearProgress,
+  TextField,
+} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 
 interface Field {
@@ -15,7 +23,7 @@ interface Field {
 }
 
 interface LoadState {
-  error: Error | null;
+  error: string | null;
   loading: boolean;
   tableData: null | {
     rows: any[];
@@ -59,19 +67,8 @@ const TableLoader = (props: DataLoaderProps) => {
   const columnDefs: GridOptions['columnDefs'] = columns.map((c) => ({
     headerName: c.title,
     field: c.field,
+    sortable: true,
   }));
-
-  const [style, setStyle] = useState({
-    height: '100%',
-    width: '100%',
-  });
-
-  // useLayoutEffect(() => {
-  //   setStyle({
-  //     width: '100%',
-  //     height: '100%',
-  //   });
-  // }, []);
 
   const [state, setState] = useState<LoadState>({
     error: null,
@@ -84,8 +81,6 @@ const TableLoader = (props: DataLoaderProps) => {
     () =>
       requestDataLoader({
         doRequest: () => {
-          loading.current = true;
-
           return doQuery({
             pageNumber: state.nextBucketPageNumber,
             pageSize: backendPageSize,
@@ -95,11 +90,7 @@ const TableLoader = (props: DataLoaderProps) => {
         formatResponse: (response) => response,
         initialValue: null,
         onStateChange(output) {
-          loading.current = false;
-
-          if (!output.data) {
-            return;
-          }
+          loading.current = output.loading;
 
           setState((state) => ({
             error: output.error,
@@ -112,10 +103,10 @@ const TableLoader = (props: DataLoaderProps) => {
               totalCount:
                 state.tableData?.totalCount || output.data?.totalCount || null,
             },
-            nextBucketPageNumber: state.nextBucketPageNumber + 1,
+            nextBucketPageNumber: output.data
+              ? state.nextBucketPageNumber + 1
+              : state.nextBucketPageNumber,
           }));
-
-          return;
         },
       }),
     [doQuery, state.nextBucketPageNumber, backendPageSize, search]
@@ -130,6 +121,9 @@ const TableLoader = (props: DataLoaderProps) => {
     });
   };
 
+  // To pevent interrupting the animation of loading by batches
+  const [showLoading, setShowLoading] = useState(loading.current);
+
   useEffect(() => {
     const backendHasMoreRows =
       (state.tableData?.totalCount || 0) > (state.tableData?.rows?.length || 0);
@@ -140,19 +134,18 @@ const TableLoader = (props: DataLoaderProps) => {
 
     const loadNext = (endReached || eager) && backendHasMoreRows;
 
-    if (
-      !state.tableData &&
-      !state.loading &&
-      !state.error &&
-      !loading.current
-    ) {
-      load();
+    if (!state.tableData && !state.loading && !state.error) {
+      loading.current || load();
+      setShowLoading(true);
       return;
     }
 
-    if (loadNext && !state.loading && !state.error && !loading.current) {
-      load();
+    if (loadNext && !state.loading && !state.error) {
+      loading.current || load();
+      setShowLoading(true);
     }
+
+    setShowLoading(state.loading || loading.current);
   }, [
     viewPageNumber,
     state.loading,
@@ -173,61 +166,112 @@ const TableLoader = (props: DataLoaderProps) => {
     return [...(state.tableData?.rows || []), ...fakeRows];
   }, [state.tableData?.totalCount, state.tableData?.rows]);
 
+  const progress = Math.ceil(
+    state.tableData?.totalCount
+      ? ((state.tableData.rows?.length || 0) / state.tableData.totalCount) * 100
+      : 0
+  );
+
+  const loadingStatus = showLoading ? (
+    <Box pl={2}>
+      <CircularProgress />
+    </Box>
+  ) : state.error ? (
+    <Alert severity="error">Cannot load table: {state.error}</Alert>
+  ) : (
+    <Box />
+  );
+
+  const loadingProgress = (
+    <LinearProgress
+      color="inherit"
+      variant={state.tableData?.totalCount ? 'determinate' : 'indeterminate'}
+      value={progress}
+    />
+  );
+
   return (
-    <div style={{ height: '100%' }}>
-      {state.loading && <div>Loading...</div>}
-      {state.error && <div>{state.error.message}</div>}
-      <Box mb={2} display="flex" flexDirection={'row-reverse'}>
-        <TextField
-          id="outlined-basic"
-          label="Search"
-          variant="outlined"
-          onChange={(e) => {
-            setSearch(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              applySearch();
-            }
-          }}
-          InputProps={{
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton
-                  color="primary"
-                  aria-label="apply search"
-                  component="label"
-                  onClick={applySearch}
-                >
-                  <SearchIcon />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
+    <Box height="100%" mt={2}>
+      <Box
+        display="flex"
+        flexDirection={'row'}
+        justifyContent="space-between"
+        mb={2}
+      >
+        {loadingStatus}
+
+        <Box justifySelf={'flex-end'}>
+          <Search
+            onChange={(input) => setSearch(input)}
+            onClick={applySearch}
+          />
+        </Box>
       </Box>
+
+      {loadingProgress}
+
       {state.tableData && (
-        <div id="1" style={{ height: '100%' }}>
-          <div
-            className="ag-theme-alpine"
-            style={{ height: 'calc(100% - 25px)' }}
+        <Box
+          className="ag-theme-alpine"
+          style={{ height: 'calc(100% - 100px)' }} // for table footer
+        >
+          <Box
+            style={{
+              height: '100%',
+              width: '100%',
+            }}
           >
-            <div style={style}>
-              <AgGridReact
-                rowData={rowsWithPlaceholders}
-                columnDefs={columnDefs}
-                pagination={true}
-                paginationPageSize={viewPageSize}
-                onPaginationChanged={(e) => {
-                  const currentPage = e.api.paginationGetCurrentPage();
-                  setViewPageNumber(currentPage);
-                }}
-              />
-            </div>
-          </div>
-        </div>
+            <AgGridReact
+              rowData={rowsWithPlaceholders}
+              columnDefs={columnDefs}
+              pagination={true}
+              paginationPageSize={viewPageSize}
+              onPaginationChanged={(e) => {
+                const currentPage = e.api.paginationGetCurrentPage();
+                setViewPageNumber(currentPage);
+              }}
+            />
+          </Box>
+        </Box>
       )}
-    </div>
+    </Box>
+  );
+};
+
+const Search = (props: {
+  onClick: () => void;
+  onChange: (input: string) => void;
+  disabled?: boolean;
+}) => {
+  return (
+    <TextField
+      disabled={props.disabled}
+      id="outlined-basic"
+      label="Search"
+      variant="outlined"
+      onChange={(e) => {
+        props.onChange(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          props.onClick();
+        }
+      }}
+      InputProps={{
+        endAdornment: (
+          <InputAdornment position="end">
+            <IconButton
+              color="primary"
+              aria-label="apply search"
+              component="label"
+              onClick={props.onClick}
+            >
+              <SearchIcon />
+            </IconButton>
+          </InputAdornment>
+        ),
+      }}
+    />
   );
 };
 
