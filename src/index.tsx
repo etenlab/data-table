@@ -101,7 +101,7 @@ const TableLoader = (props: DataLoaderProps) => {
                 ...(output.data?.rows || []),
               ],
               totalCount:
-                state.tableData?.totalCount || output.data?.totalCount || null,
+                state.tableData?.totalCount ?? output.data?.totalCount ?? null,
             },
             nextBucketPageNumber: output.data
               ? state.nextBucketPageNumber + 1
@@ -167,8 +167,11 @@ const TableLoader = (props: DataLoaderProps) => {
   }, [state.tableData?.totalCount, state.tableData?.rows]);
 
   const progress = Math.ceil(
-    state.tableData?.totalCount
-      ? ((state.tableData.rows?.length || 0) / state.tableData.totalCount) * 100
+    state.tableData?.totalCount != null
+      ? state.tableData?.totalCount === 0
+        ? 100
+        : ((state.tableData.rows?.length || 0) / state.tableData.totalCount) *
+          100
       : 0
   );
 
@@ -185,7 +188,7 @@ const TableLoader = (props: DataLoaderProps) => {
   const loadingProgress = (
     <LinearProgress
       color="inherit"
-      variant={state.tableData?.totalCount ? 'determinate' : 'indeterminate'}
+      variant={state.tableData || state.error ? 'determinate' : 'indeterminate'}
       value={progress}
     />
   );
