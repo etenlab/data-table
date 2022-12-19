@@ -1,14 +1,14 @@
-import React from 'react';
+import React, { JSXElementConstructor } from 'react';
 import { requestDataLoader } from './requestDataLoader';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { GridOptions } from 'ag-grid-community';
 import 'ag-grid-community/styles//ag-grid.css';
 import 'ag-grid-community/styles//ag-theme-alpine.css';
-
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   IconButton,
   InputAdornment,
@@ -34,7 +34,7 @@ interface LoadState {
 
 const DEFAULT_BACKEND_PAGE_SIZE = 100;
 
-export interface DataLoaderProps {
+export interface DataLoaderProps<T = any> {
   columns: Field[];
   doQuery: (params: {
     pageSize: number;
@@ -42,7 +42,7 @@ export interface DataLoaderProps {
     search: string;
   }) => Promise<{
     totalCount: number | null;
-    rows: Object[];
+    rows: T[];
   }>;
   /**
    * Start loading all rows immediately
@@ -52,10 +52,39 @@ export interface DataLoaderProps {
    * Page size used in backend queries
    */
   loadPageSize?: number;
+  /**
+   * Makes fields clickable with optional icon.
+   *
+   * @example
+   * {
+   *  'field_name': {
+   *   endIcon: ForumIcon, // import ForumIcon from '@mui/icons-material/Forum'
+   *   handler: (row) => {
+   *   console.log(row);
+   * }
+   */
+  detailHandlers?: {
+    [key: string]: {
+      endIcon?: JSXElementConstructor<any>;
+      handler: (row: T) => void;
+    };
+  };
 }
 
+const CellRenderer = (props: any) => {
+  return (
+    <Button
+      variant="text"
+      onClick={() => props.onClick(props.data)}
+      endIcon={props.icon && <props.icon />}
+    >
+      {props.valueFormatted ?? props.value}
+    </Button>
+  );
+};
+
 const TableLoader = (props: DataLoaderProps) => {
-  const { columns, doQuery, eager, loadPageSize } = props;
+  const { columns, doQuery, eager, loadPageSize, detailHandlers } = props;
   const [search, setSearch] = useState('');
   const viewPageSize = 15;
   const backendPageSize = loadPageSize || DEFAULT_BACKEND_PAGE_SIZE;
@@ -68,6 +97,15 @@ const TableLoader = (props: DataLoaderProps) => {
     headerName: c.title,
     field: c.field,
     sortable: true,
+    resizable: true,
+    filter: true,
+    cellRenderer: detailHandlers?.[c.field] ? CellRenderer : undefined,
+    cellRendererParams: detailHandlers?.[c.field]
+      ? {
+          onClick: detailHandlers[c.field].handler,
+          icon: detailHandlers[c.field].endIcon,
+        }
+      : undefined,
   }));
 
   const [state, setState] = useState<LoadState>({
@@ -186,11 +224,15 @@ const TableLoader = (props: DataLoaderProps) => {
   );
 
   const loadingProgress = (
-    <LinearProgress
-      color="inherit"
-      variant={state.tableData || state.error ? 'determinate' : 'indeterminate'}
-      value={progress}
-    />
+    <Box visibility={progress === 100 ? 'hidden' : 'visible'}>
+      <LinearProgress
+        color="inherit"
+        variant={
+          state.tableData || state.error ? 'determinate' : 'indeterminate'
+        }
+        value={progress}
+      />
+    </Box>
   );
 
   return (
@@ -233,6 +275,9 @@ const TableLoader = (props: DataLoaderProps) => {
                 const currentPage = e.api.paginationGetCurrentPage();
                 setViewPageNumber(currentPage);
               }}
+              enableCellTextSelection={true}
+              paginationAutoPageSize={true}
+              onGridReady={(event) => event.api.sizeColumnsToFit()}
             />
           </Box>
         </Box>
