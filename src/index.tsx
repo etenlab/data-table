@@ -69,6 +69,7 @@ export interface DataLoaderProps<T = any> {
       handler: (row: T) => void;
     };
   };
+  onRowClicked?: (event: { rowData: T; rowIndex: number }) => void;
 }
 
 const CellRenderer = (props: any) => {
@@ -84,7 +85,14 @@ const CellRenderer = (props: any) => {
 };
 
 const TableLoader = (props: DataLoaderProps) => {
-  const { columns, doQuery, eager, loadPageSize, detailHandlers } = props;
+  const {
+    columns,
+    doQuery,
+    eager,
+    loadPageSize,
+    detailHandlers,
+    onRowClicked,
+  } = props;
   const [search, setSearch] = useState('');
   const viewPageSize = 15;
   const backendPageSize = loadPageSize || DEFAULT_BACKEND_PAGE_SIZE;
@@ -278,6 +286,12 @@ const TableLoader = (props: DataLoaderProps) => {
               enableCellTextSelection={true}
               paginationAutoPageSize={true}
               onGridReady={(event) => event.api.sizeColumnsToFit()}
+              onRowClicked={(event) => {
+                onRowClicked?.({
+                  rowData: event.data,
+                  rowIndex: event.rowIndex!,
+                });
+              }}
             />
           </Box>
         </Box>
