@@ -88,18 +88,16 @@ export interface DataLoaderProps<T = any> {
   };
 }
 
-type ExpandedRow = {
-  index: number;
-  element: ReactElement;
-};
+// This type is array because AG-Grid reconstructs plain objects passed to cellRendererParams, so passing an object as a ref has no sense
+type ExpandedRow = [number | null, ReactElement | null];
 
 type ExpandedCellRendererProps = {
-  expandedRow: Map<number, ReactElement>;
-  // expandedRow: MutableRefObject<ExpandedRow>;
+  // Mutable
+  expandedRow: ExpandedRow;
   endIcon?: JSXElementConstructor<any>;
 };
 
-function CellRenderer<T>(
+function ExpandButtonsRenderer<T>(
   props: ExpandedCellRendererProps & {
     value: any;
     valueFormatted: any;
@@ -115,11 +113,8 @@ function CellRenderer<T>(
       onClick={() => {
         const rendered = props.detailRenderer(props.data);
         if (rendered) {
-          props.expandedRow.set(props.rowIndex, rendered);
-          // props.expandedRow.current = {
-          //   element: rendered,
-          //   index: props.rowIndex,
-          // };
+          props.expandedRow[0] = props.rowIndex;
+          props.expandedRow[1] = rendered;
 
           props.api.resetRowHeights();
           props.api.redrawRows();
@@ -147,15 +142,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
   const backendPageSize = loadPageSize || DEFAULT_BACKEND_PAGE_SIZE;
   const loading = useRef(false);
 
-  // const expandedRow = useRef<{
-  //   index: number;
-  //   element: ReactElement;
-  // } | null>({
-  //   element: <></>,
-  //   index: -1,
-  // });
-
-  const expandedRow = useRef<Map<number, ReactElement>>(new Map());
+  const expandedRow = useRef<ExpandedRow>([null, null]);
 
   const columnDefs: GridOptions['columnDefs'] = columns.map((c) => ({
     headerName: c.title,
@@ -163,13 +150,12 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
     sortable: true,
     resizable: true,
     filter: true,
-    cellRenderer: detailHandlers?.[c.field] ? CellRenderer : undefined,
+    cellRenderer: detailHandlers?.[c.field] ? ExpandButtonsRenderer : undefined,
     cellRendererParams: detailHandlers?.[c.field]
       ? ({
           detailRenderer: detailHandlers[c.field].detailRenderer,
           endIcon: detailHandlers[c.field].endIcon,
           expandedRow: expandedRow.current,
-          // expandedRow: expandedRow,
         } as ExpandedCellRendererProps)
       : undefined,
   }));
@@ -340,11 +326,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
           />
         </Box>
         {/* Main content goes here */}
-        {/* {expandedRow.current?.index === event.rowIndex && (
-          <Box height="50px" overflow={'hidden'}>
-            {expandedRow.current.element}
-          </Box>
-        )} */}
+        {<Box>{expandedRow.current[1]}</Box>}
         <Box
           justifySelf={'end'}
           width="100%"
@@ -356,10 +338,10 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
             aria-label="collapse"
             component="label"
             onClick={() => {
-              if (!event.rowIndex) return;
+              if (event.rowIndex == null) return;
 
-              expandedRow.current.delete(event.rowIndex);
-              // expandedRow.current = null;
+              expandedRow.current[0] = null;
+              expandedRow.current[1] = null;
 
               event.api.resetRowHeights();
               event.api.redrawRows();
@@ -374,13 +356,9 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
 
   const getRowHeight = (params: RowHeightParams<any>) => {
     return params.node.rowIndex != null &&
-      expandedRow.current.has(params.node.rowIndex)
+      expandedRow.current?.[0] === params.node.rowIndex
       ? 500
       : 50;
-    // return params.node.rowIndex != null &&
-    //   expandedRow.current?.index === params.node.rowIndex
-    //   ? 500
-    //   : 50;
   };
 
   const onRowClicked = (event: RowClickedEvent<any>) => {
@@ -391,11 +369,11 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
   };
 
   const isFullWidthRow = (params: IsFullWidthRowParams<any>) => {
-    return (
-      params.rowNode.rowIndex != null &&
-      expandedRow.current.has(params.rowNode.rowIndex)
-      // expandedRow.current?.index === params.rowNode.rowIndex
-    );
+    if (params.rowNode.rowIndex == null) {
+      return false;
+    }
+
+    return expandedRow.current?.[0] === params.rowNode.rowIndex;
   };
 
   const onGridReady = (event: GridReadyEvent<any>) => {
