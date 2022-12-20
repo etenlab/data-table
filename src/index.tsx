@@ -1,8 +1,23 @@
-import React, { JSXElementConstructor } from 'react';
+import React, {
+  JSXElementConstructor,
+  ReactElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { requestDataLoader } from './requestDataLoader';
-import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { GridOptions } from 'ag-grid-community';
+import {
+  ColumnMovedEvent,
+  GridApi,
+  GridOptions,
+  GridReadyEvent,
+  IsFullWidthRowParams,
+  PaginationChangedEvent,
+  RowClickedEvent,
+  RowHeightParams,
+} from 'ag-grid-community';
 import 'ag-grid-community/styles//ag-grid.css';
 import 'ag-grid-community/styles//ag-theme-alpine.css';
 import {
@@ -16,6 +31,7 @@ import {
   TextField,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 
 interface Field {
   title: string;
@@ -52,6 +68,7 @@ export interface DataLoaderProps<T = any> {
    * Page size used in backend queries
    */
   loadPageSize?: number;
+  onRowClicked?: (event: { rowData: T; rowIndex: number }) => void;
   /**
    * Makes fields clickable with optional icon.
    *
@@ -66,40 +83,79 @@ export interface DataLoaderProps<T = any> {
   detailHandlers?: {
     [key: string]: {
       endIcon?: JSXElementConstructor<any>;
-      handler: (row: T) => void;
+      detailRenderer: (row: T) => ReactElement | null;
     };
   };
-  onRowClicked?: (event: { rowData: T; rowIndex: number }) => void;
 }
 
-const CellRenderer = (props: any) => {
+type ExpandedRow = {
+  index: number;
+  element: ReactElement;
+};
+
+type ExpandedCellRendererProps = {
+  expandedRow: Map<number, ReactElement>;
+  // expandedRow: MutableRefObject<ExpandedRow>;
+  endIcon?: JSXElementConstructor<any>;
+};
+
+function CellRenderer<T>(
+  props: ExpandedCellRendererProps & {
+    value: any;
+    valueFormatted: any;
+    rowIndex: number;
+    data: T;
+    api: GridApi;
+    detailRenderer: (row: T) => ReactElement | null;
+  }
+) {
   return (
     <Button
       variant="text"
-      onClick={() => props.onClick(props.data)}
-      endIcon={props.icon && <props.icon />}
+      onClick={() => {
+        const rendered = props.detailRenderer(props.data);
+        if (rendered) {
+          props.expandedRow.set(props.rowIndex, rendered);
+          // props.expandedRow.current = {
+          //   element: rendered,
+          //   index: props.rowIndex,
+          // };
+
+          props.api.resetRowHeights();
+          props.api.redrawRows();
+        }
+      }}
+      endIcon={props.endIcon && <props.endIcon />}
     >
       {props.valueFormatted ?? props.value}
     </Button>
   );
-};
+}
 
-const TableLoader = (props: DataLoaderProps) => {
+function TableLoader<T>(props: DataLoaderProps<T>) {
   const {
     columns,
     doQuery,
     eager,
     loadPageSize,
     detailHandlers,
-    onRowClicked,
+    onRowClicked: onRowClickedHandler,
   } = props;
   const [search, setSearch] = useState('');
   const viewPageSize = 15;
+  const [viewPageNumber, setViewPageNumber] = useState(0);
   const backendPageSize = loadPageSize || DEFAULT_BACKEND_PAGE_SIZE;
-
   const loading = useRef(false);
 
-  const [viewPageNumber, setViewPageNumber] = useState(0);
+  // const expandedRow = useRef<{
+  //   index: number;
+  //   element: ReactElement;
+  // } | null>({
+  //   element: <></>,
+  //   index: -1,
+  // });
+
+  const expandedRow = useRef<Map<number, ReactElement>>(new Map());
 
   const columnDefs: GridOptions['columnDefs'] = columns.map((c) => ({
     headerName: c.title,
@@ -109,10 +165,12 @@ const TableLoader = (props: DataLoaderProps) => {
     filter: true,
     cellRenderer: detailHandlers?.[c.field] ? CellRenderer : undefined,
     cellRendererParams: detailHandlers?.[c.field]
-      ? {
-          onClick: detailHandlers[c.field].handler,
-          icon: detailHandlers[c.field].endIcon,
-        }
+      ? ({
+          detailRenderer: detailHandlers[c.field].detailRenderer,
+          endIcon: detailHandlers[c.field].endIcon,
+          expandedRow: expandedRow.current,
+          // expandedRow: expandedRow,
+        } as ExpandedCellRendererProps)
       : undefined,
   }));
 
@@ -204,7 +262,7 @@ const TableLoader = (props: DataLoaderProps) => {
   ]);
 
   const rowsWithPlaceholders = useMemo(() => {
-    const missingRowsCount =
+    let missingRowsCount =
       (state.tableData?.totalCount || 0) - (state.tableData?.rows?.length || 0);
 
     const fakeRows = Array(Math.max(0, missingRowsCount)).fill(undefined);
@@ -243,6 +301,113 @@ const TableLoader = (props: DataLoaderProps) => {
     </Box>
   );
 
+  const colState = useRef(null as any);
+
+  const onColumnChange = (event: ColumnMovedEvent<any>) => {
+    colState.current = event.columnApi.getColumnState();
+  };
+
+  const fullWidthRowStyle = { borderWidth: '0px', height: '50px' };
+  const onFullWidthRowGridReady = (event: GridReadyEvent<any>) => {
+    event.columnApi.applyColumnState({
+      state: colState.current,
+      applyOrder: true,
+    });
+
+    event.api.sizeColumnsToFit();
+  };
+
+  const fullWidthCellRenderer = (event: RowClickedEvent<any>) => {
+    return (
+      <Box
+        display="flex"
+        justifyContent={'space-between'}
+        flexDirection="column"
+        alignItems="stretch"
+      >
+        <Box height="50px" overflow={'hidden'}>
+          <AgGridReact
+            containerStyle={{
+              borderWidth: '0px',
+              overflow: 'hidden',
+            }}
+            rowStyle={fullWidthRowStyle}
+            headerHeight={0}
+            columnDefs={columnDefs}
+            enableCellTextSelection={true}
+            onGridReady={onFullWidthRowGridReady}
+            rowData={[event.data]}
+          />
+        </Box>
+        {/* Main content goes here */}
+        {/* {expandedRow.current?.index === event.rowIndex && (
+          <Box height="50px" overflow={'hidden'}>
+            {expandedRow.current.element}
+          </Box>
+        )} */}
+        <Box
+          justifySelf={'end'}
+          width="100%"
+          display="flex"
+          justifyContent={'center'}
+        >
+          <IconButton
+            color="primary"
+            aria-label="collapse"
+            component="label"
+            onClick={() => {
+              if (!event.rowIndex) return;
+
+              expandedRow.current.delete(event.rowIndex);
+              // expandedRow.current = null;
+
+              event.api.resetRowHeights();
+              event.api.redrawRows();
+            }}
+          >
+            <ExpandLessIcon />
+          </IconButton>
+        </Box>
+      </Box>
+    );
+  };
+
+  const getRowHeight = (params: RowHeightParams<any>) => {
+    return params.node.rowIndex != null &&
+      expandedRow.current.has(params.node.rowIndex)
+      ? 500
+      : 50;
+    // return params.node.rowIndex != null &&
+    //   expandedRow.current?.index === params.node.rowIndex
+    //   ? 500
+    //   : 50;
+  };
+
+  const onRowClicked = (event: RowClickedEvent<any>) => {
+    onRowClickedHandler?.({
+      rowData: event.data,
+      rowIndex: event.rowIndex!,
+    });
+  };
+
+  const isFullWidthRow = (params: IsFullWidthRowParams<any>) => {
+    return (
+      params.rowNode.rowIndex != null &&
+      expandedRow.current.has(params.rowNode.rowIndex)
+      // expandedRow.current?.index === params.rowNode.rowIndex
+    );
+  };
+
+  const onGridReady = (event: GridReadyEvent<any>) => {
+    event.api.sizeColumnsToFit();
+    colState.current = event.columnApi.getColumnState();
+  };
+
+  const onPaginationChanged = (e: PaginationChangedEvent<any>) => {
+    const currentPage = e.api.paginationGetCurrentPage();
+    setViewPageNumber(currentPage);
+  };
+
   return (
     <Box height="100%" mt={2}>
       <Box
@@ -277,28 +442,27 @@ const TableLoader = (props: DataLoaderProps) => {
             <AgGridReact
               rowData={rowsWithPlaceholders}
               columnDefs={columnDefs}
+              onGridReady={onGridReady}
               pagination={true}
               paginationPageSize={viewPageSize}
-              onPaginationChanged={(e) => {
-                const currentPage = e.api.paginationGetCurrentPage();
-                setViewPageNumber(currentPage);
-              }}
-              enableCellTextSelection={true}
               paginationAutoPageSize={true}
-              onGridReady={(event) => event.api.sizeColumnsToFit()}
-              onRowClicked={(event) => {
-                onRowClicked?.({
-                  rowData: event.data,
-                  rowIndex: event.rowIndex!,
-                });
-              }}
+              onPaginationChanged={onPaginationChanged}
+              enableCellTextSelection={true}
+              getRowHeight={getRowHeight}
+              onColumnEverythingChanged={onColumnChange}
+              onColumnMoved={onColumnChange}
+              onColumnVisible={onColumnChange}
+              onColumnResized={onColumnChange}
+              onRowClicked={onRowClicked}
+              isFullWidthRow={isFullWidthRow}
+              fullWidthCellRenderer={fullWidthCellRenderer}
             />
           </Box>
         </Box>
       )}
     </Box>
   );
-};
+}
 
 const Search = (props: {
   onClick: () => void;
