@@ -82,8 +82,24 @@ export interface DataLoaderProps<T = any> {
    */
   detailHandlers?: {
     [key: string]: {
+      startIcon?: JSXElementConstructor<any>;
       endIcon?: JSXElementConstructor<any>;
-      detailRenderer: (row: T) => ReactElement | null;
+      detailRenderer: (
+        row: T,
+        /**
+         * Call this callback whenever you want to recalculate row height
+         *
+         * @example
+         * const ref = useRef<HTMLDivElement>(null);
+         *
+         * useEffect(() => {
+         *  props.heightChanged();
+         * }, [ref.current?.offsetHeight, props]);
+         *
+         * <Box ref={ref}>
+         */
+        heightChanged: () => void
+      ) => ReactElement | null;
     };
   };
 }
@@ -94,6 +110,7 @@ type ExpandedRow = [number | null, ReactElement | null];
 type ExpandedCellRendererProps = {
   // Mutable
   expandedRow: ExpandedRow;
+  startIcon?: JSXElementConstructor<any>;
   endIcon?: JSXElementConstructor<any>;
 };
 
@@ -104,14 +121,16 @@ function ExpandButtonsRenderer<T>(
     rowIndex: number;
     data: T;
     api: GridApi;
-    detailRenderer: (row: T) => ReactElement | null;
+    detailRenderer: (row: T, f: Function) => ReactElement | null;
   }
 ) {
   return (
     <Button
       variant="text"
       onClick={() => {
-        const rendered = props.detailRenderer(props.data);
+        const rendered = props.detailRenderer(props.data, () => {
+          props.api.resetRowHeights();
+        });
         if (rendered) {
           props.expandedRow[0] = props.rowIndex;
           props.expandedRow[1] = rendered;
@@ -121,6 +140,7 @@ function ExpandButtonsRenderer<T>(
         }
       }}
       endIcon={props.endIcon && <props.endIcon />}
+      startIcon={props.startIcon && <props.startIcon />}
     >
       {props.valueFormatted ?? props.value}
     </Button>
@@ -155,6 +175,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
       ? ({
           detailRenderer: detailHandlers[c.field].detailRenderer,
           endIcon: detailHandlers[c.field].endIcon,
+          startIcon: detailHandlers[c.field].startIcon,
           expandedRow: expandedRow.current,
         } as ExpandedCellRendererProps)
       : undefined,
@@ -303,9 +324,18 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
     event.api.sizeColumnsToFit();
   };
 
-  const fullWidthCellRenderer = (event: RowClickedEvent<any>) => {
+  const fullWidthElem = useRef<HTMLElement | null>(null);
+
+  const FullWidthCellRenderer = (event: RowClickedEvent<any>) => {
+    // This hook is technically needed bu it has no affect because of AG-Grids internal re-renders
+    useEffect(() => {
+      event.api.resetRowHeights();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [event.api, expandedRow.current[1]]);
+
     return (
       <Box
+        ref={fullWidthElem}
         display="flex"
         justifyContent={'space-between'}
         flexDirection="column"
@@ -326,7 +356,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
           />
         </Box>
         {/* Main content goes here */}
-        {<Box>{expandedRow.current[1]}</Box>}
+        {<Box p={2}>{expandedRow.current[1]}</Box>}
         <Box
           justifySelf={'end'}
           width="100%"
@@ -357,7 +387,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
   const getRowHeight = (params: RowHeightParams<any>) => {
     return params.node.rowIndex != null &&
       expandedRow.current?.[0] === params.node.rowIndex
-      ? 500
+      ? fullWidthElem.current?.offsetHeight || 100
       : 50;
   };
 
@@ -433,7 +463,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
               onColumnResized={onColumnChange}
               onRowClicked={onRowClicked}
               isFullWidthRow={isFullWidthRow}
-              fullWidthCellRenderer={fullWidthCellRenderer}
+              fullWidthCellRenderer={FullWidthCellRenderer}
             />
           </Box>
         </Box>
