@@ -157,7 +157,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
     onRowClicked: onRowClickedHandler,
   } = props;
   const [search, setSearch] = useState('');
-  const viewPageSize = 15;
+  const [viewPageSize, setViewPageSize] = useState(15);
   const [viewPageNumber, setViewPageNumber] = useState(0);
   const backendPageSize = loadPageSize || DEFAULT_BACKEND_PAGE_SIZE;
   const loading = useRef(false);
@@ -258,6 +258,7 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
 
     setShowLoading(state.loading || loading.current);
   }, [
+    viewPageSize,
     viewPageNumber,
     state.loading,
     state.tableData?.rows?.length,
@@ -412,8 +413,8 @@ function TableLoader<T>(props: DataLoaderProps<T>) {
   };
 
   const onPaginationChanged = (e: PaginationChangedEvent<any>) => {
-    const currentPage = e.api.paginationGetCurrentPage();
-    setViewPageNumber(currentPage);
+    setViewPageSize(e.api.paginationGetPageSize());
+    setViewPageNumber(e.api.paginationGetCurrentPage());
   };
 
   return (
